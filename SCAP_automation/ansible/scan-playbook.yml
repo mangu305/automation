@@ -1,0 +1,26 @@
+---
+- name: Run SCAP Compliance Scan
+  hosts: all
+  become: true
+  remote_user: "{{ user }}"
+  tasks:
+    - name: Install SCC
+      command: "{{ command }} -i /tmp/scc.{{ file_ext }}"
+      args: 
+        creates: "{{ scc_dir }}/cscc"
+    - name: Remove SCC Install File
+      file:
+        path: /tmp/scc.{{ file_ext }}
+        state: absent
+    - name: Create Output Folder
+      file:
+        path: "{{ scc_dir }}/output"
+        state: directory
+        owner: "{{ user }}"
+        group: "{{ user }}"
+    - name: Run the SCAP Compliance Scan
+      shell: "{{ scc_dir }}/cscc -u {{ scc_dir }}/output \
+      --setOpt dirAllSessionsEnabled 0 \
+      --setOpt dirContentTypeEnabled 0 \
+      --setOpt dirSessionEnabled 0 \
+      --setOpt dirSessionResultsEnabled 0 \

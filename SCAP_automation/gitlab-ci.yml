@@ -1,0 +1,91 @@
+stages:
+    - scc_scans
+
+variables:
+    SCC_VERSION: 5.4.2
+    SCC_DIR: /opt/scc
+
+#region Linux Scans
+.linux-scans:
+    script:
+        - >
+            FILES=$(find ./scanning -maxdepth 1 -name "*$OS*" -type f)
+
+            if [[ $FILES ]]; then
+                mkdir -p ./$OS-scans
+
+                for FILE in $FILES; do 
+                    VERSION=$(echo $FILE | cut -d'_' -f2 | cut -d'.' -f1)
+                    
+                    for HOST in $(cat $FILE); do
+                        EXISTS=$(sshpass -p "$ROOT_PASS" ssh \
+                        -q $USERNAME@$HOST [[ -f $SCC_DIR/cscc ]] && \
+                        echo "true" || echo "false";)
+
+                        if [ $EXISTS == 'false' ]; then
+                            echo "Copying files to $host"
+
+                            sshpass -p "$ROOT_PASS" scp \
+                            -o StrictHostKeyChecking=no \
+                            ./scc/$OS-scc/$VERSION/scc.$FILE_EXT $USERNAME@$HOST:/tmp
+                        fi
+                    done
+
+                    ansible-playbook ./ansible/scan-playbook.yml -i $FILE --extra-vars \
+                    "ansible_sudo_pass=$ROOT_PASS \
+                    ansible_ssh_pass=$ROOT_PASS \
+                    ci_folder=$CI_PROJECT_DIR \
+                    user=$USERNAME \
+                    scc_dir=$SCC_DIR \
+                    os=$OS \
+                    version=$VERSION \
+                    scc_version=$SCC_VERSION \
+                    command=$COMMAND \
+                    file_ext=$FILE_EXT" --ssh-common-args "-o StrictHostKeyChecking=no"
+                done
+            fi
+    tags:
+        - ansible
+    artifacts:
+        paths:
+            - ./$OS-scans/*.xml
+#endregion
+#region rhel
+rhel:
+    stage: scc_scans
+    extends: .linux-scans
+    variables:
+        OS: rhel
+        USERNAME: $RHEL_USERNAME
+        ROOT_PASS: $RHEL_ROOT_PASS
+        FILE_EXT: rpm
+        COMMAND: rpm
+    rules:
+        - if:  $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "schedule"
+#endregion
+#region Windows Scans
+windows:
+    stage: scc_scans
+    variables:
+        OUTPUT_FOLDER: C:\Temp\SCC
+    script:
+        - >
+            if(Test-Path -Path .\scanning\windows.txt -PathType Leaf) {
+                cp .\scanning\windows.txt .\scc\windows-scc
+                cd .\scc\windows-scc
+                New-Item $env:OUTPUT_FOLDER -ItemType Directory -Force
+                New-Item .\Upload -ItemType Directory -Force
+                Expand-Archive .\scc.zip .
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                & ".\scc_$env:SCC_VERSION\cscc" -f .\windows.txt -u $env:OUTPUT_FOLDER
+                Get-ChildItem $env:OUTPUT_FOLDER -Filter "*XCCDF*.xml" -Recurse `
+                | % { Move-Item $_.FullName .\Upload }
+            }
+    tags:
+        - scc-win
+    rules:
+        - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "schedule"
+    artifacts:
+        paths:
+            - ./scc/windows-scc/Upload/*.xml
+#endregion
