@@ -1,6 +1,6 @@
 # Script paths
 $scripts = @(
-    "path\to\script1.ps1",
+    "c:\GRC\GRC - AD User Information.ps1",
     "path\to\script2.ps1",
     "path\to\script3.ps1",
     "path\to\script4.ps1",
